@@ -18,6 +18,10 @@ namespace acftti_csharp_lib
         /// </summary>
         private ConcurrentQueue<string> messages;
         /// <summary>
+        /// UDP Client that listens for requests.
+        /// </summary>
+        private UdpClient listener;
+        /// <summary>
         /// UDP port to listen on. Generally should be a number larger than 1000, and should always be less than 65,536. If this
         /// is changed, the Python agent should be updated to match this value.
         /// </summary>
@@ -49,7 +53,7 @@ namespace acftti_csharp_lib
         {
             // Implementation borrowed from: https://docs.microsoft.com/en-us/dotnet/framework/network-programming/using-udp-services
 
-            UdpClient listener = new UdpClient(port);
+            listener = new UdpClient(port);
             IPEndPoint groupEP = new IPEndPoint(IPAddress.Any, port);
 
             try
@@ -72,27 +76,57 @@ namespace acftti_csharp_lib
         }
 
         /// <summary>
+        /// Checks if there are messages waiting to be read.
+        /// </summary>
+        /// <returns>If there are messages ready to be read from the UDP socket.</returns>
+        public bool MessageIsReady()
+        {
+            return this.messages.Count > 0;
+        }
+
+        /// <summary>
+        /// Gets the number of messages that are ready.
+        /// </summary>
+        /// <returns>Number of messages ready to be read.</returns>
+        public int MessagesReady()
+        {
+            return this.messages.Count;
+        }
+
+        /// <summary>
         /// Gets the next message recieved from the message queue. This function is thread-safe. If no message is available, or if
         /// access to the queue is currently blocked, this function returns "";
         /// </summary>
         /// <returns>Returns the next unread message, or "" if there is none.</returns>
         public string GetNextMessage()
         {
-            if(this.messages.Count == 0)
-            {
-                return "";
-            }
             try
             {
+                if(!this.MessageIsReady())
+                {
+                    throw new Exception("No new messages are ready.");
+                }
                 string result;
-                this.messages.TryDequeue(out result);
+                bool didDequeue = this.messages.TryDequeue(out result);
+                if (!didDequeue)
+                {
+                    throw new Exception("Unable to dequeue.");
+                }
                 return result;
             }
-            catch (Exception)
+            catch (Exception e)
             {
                 // Not able to pull from the queue, probably a concurrency problem. Try again later.
-                return "";
+                throw new Exception("Unable to read message.", e);
             }
+        }
+
+        /// <summary>
+        /// Cleans up the network connection and other artifacts that could be left behind.
+        /// </summary>
+        public void Cleanup()
+        {
+            listener.Close();
         }
 
         /// <summary>
